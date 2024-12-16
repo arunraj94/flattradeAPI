@@ -1,0 +1,7 @@
+PyYAML
+pandas
+requests
+websockets
+aiohttp
+aiodns
+httpx[http2]

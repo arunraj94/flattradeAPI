@@ -1215,30 +1215,30 @@ if __name__ == "__main__":
 
 
         order1 = await api.place_order(
-            buy_or_sell="B",
-            product_type="C",
+            buy_or_sell="S",
+            product_type="I",
             exchange="NSE",
             tradingsymbol="YESBANK-EQ",
             quantity=1,
             discloseqty=0,
-            price_type="LMT",
-            price=20,
+            price_type="MKT",
+            price=0.0,
             trigger_price=None,
             retention="DAY",
-            remarks="my_order_001",
+            remarks="my_order_005",
         )
 
         print(order1)
 
-        order2 = await api.modify_order(
-            orderno=order1["norenordno"],
-            exchange="NSE",
-            tradingsymbol="YESBANK-EQ",
-            newquantity=1,
-            newprice_type="LMT",
-            newprice=18,
-        )
+        # order2 = await api.modify_order(
+        #     orderno=order1["norenordno"],
+        #     exchange="NSE",
+        #     tradingsymbol="YESBANK-EQ",
+        #     newquantity=1,
+        #     newprice_type="LMT",
+        #     newprice=18,
+        # )
 
-        print(order2)
+        # print(order2)
 
     asyncio.run(main())
