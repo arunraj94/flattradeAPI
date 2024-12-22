@@ -10,6 +10,8 @@ import time
 import urllib
 from time import sleep
 from datetime import datetime as dt
+from urllib.parse import urlparse, parse_qs
+import yaml, os, pyotp
 
 logger = logging.getLogger(__name__)
 
@@ -96,6 +98,9 @@ class NorenApi_Flattrade:
             'positions': '/PositionBook',
             'scripinfo': '/GetSecurityInfo',
             'getquotes': '/GetQuotes',
+            "session": f"https://authapi.flattrade.in/auth/session",
+            "ftauth": f"https://authapi.flattrade.in/ftauth",
+            "apitoken": f"https://authapi.flattrade.in/trade/apitoken"
         },
         'websocket_endpoint': 'wss://wsendpoint/',
         'eoddata_endpoint': 'http://eodhost/'
@@ -234,43 +239,145 @@ class NorenApi_Flattrade:
         self.__websocket.close()
         self.__ws_thread.join()
 
-    def login(self, userid, password, twoFA, vendor_code, api_secret, imei):
-        config = NorenApi_Flattrade.__service_config
-
-        # prepare the uri
-        url = f"{config['host']}{config['routes']['authorize']}"
-        reportmsg(url)
-
-        # Convert to SHA 256 for password and app key
-        pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
-        u_app_key = '{0}|{1}'.format(userid, api_secret)
-        app_key = hashlib.sha256(u_app_key.encode('utf-8')).hexdigest()
-        # prepare the data
-        values = {"source": "API", "apkversion": "1.0.0"}
-        values["uid"] = userid
-        values["pwd"] = pwd
-        values["factor2"] = twoFA
-        values["vc"] = vendor_code
-        values["appkey"] = app_key
-        values["imei"] = imei
-
-        payload = 'jData=' + json.dumps(values)
-        reportmsg("Req:" + payload)
-
-        res = requests.post(url, data=payload)
-        reportmsg("Reply:" + res.text)
-
-        resDict = json.loads(res.text)
-        if resDict['stat'] != 'Ok':
-            return None
+    def login(self, userid, password, twoFA, api_key, api_secret):
+        pwd = hashlib.sha256(password.encode("utf-8")).hexdigest()
+        code = self.get_authcode(userid, pwd, api_key, twoFA)
+        token = self.get_apitoken(api_key, code, api_secret)
 
         self.__username = userid
         self.__accountid = userid
         self.__password = password
-        self.__susertoken = resDict['susertoken']
-        # reportmsg(self.__susertoken)
+        self.__susertoken = token
 
-        return resDict
+        return token
+
+    def get_authcode(self, user, pwd, api_key, totp):
+        config = NorenApi_Flattrade.__service_config
+        headers = {
+            "Accept": "application/json",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Host": "authapi.flattrade.in",
+            "Origin": f"https://auth.flattrade.in",
+            "Referer": f"https://auth.flattrade.in/",
+        }
+
+        # Using requests instead of httpx
+        import requests
+
+        response = requests.post(
+            config['routes']["session"],
+            headers=headers
+        )
+
+        if response.status_code == 200:
+            sid = response.text
+
+            response = requests.post(
+                config['routes']["ftauth"],
+                headers=headers,
+                json={
+                    "UserName": user,
+                    "Password": pwd,
+                    "App": "",
+                    "ClientID": "",
+                    "Key": "",
+                    "APIKey": api_key,
+                    "PAN_DOB": totp,
+                    "Sid": sid,
+                    "Override": ""
+                }
+            )
+
+            if response.status_code == 200:
+                response_data = response.json()
+                if response_data.get("emsg") == "DUPLICATE":
+                    response = requests.post(
+                        config['routes']["ftauth"],
+                        headers=headers,
+                        json={
+                            "UserName": user,
+                            "Password": pwd,
+                            "App": "",
+                            "ClientID": "",
+                            "Key": "",
+                            "APIKey": api_key,
+                            "PAN_DOB": totp,
+                            "Sid": sid,
+                            "Override": "Y"
+                        }
+                    )
+                    if response.status_code == 200:
+                        response_data = response.json()
+                    else:
+                        reporterror(response.text)
+
+                redirect_url = response_data.get("RedirectURL", "")
+
+                query_params = parse_qs(urlparse(redirect_url).query)
+                if 'code' in query_params:
+                    code = query_params['code'][0]
+                    reportmsg(code)
+                    return code
+            else:
+                reporterror(response.text)
+        else:
+            reporterror(response.text)
+
+    def get_apitoken(self, api_key, code, api_secret):
+        config = NorenApi_Flattrade.__service_config
+
+        response = requests.post(
+            config['routes']["apitoken"],
+            json={
+                "api_key": api_key,
+                "request_code": code,
+                "api_secret": hashlib.sha256(f"{api_key}{code}{api_secret}".encode()).hexdigest()
+            }
+        )
+
+        if response.status_code == 200:
+            token = response.json().get("token", "")
+            return token
+        else:
+            reporterror(response.text)
+
+    # def login(self, userid, password, twoFA, vendor_code, api_secret, imei):
+    #     config = NorenApi_Flattrade.__service_config
+    #
+    #     # prepare the uri
+    #     url = f"{config['host']}{config['routes']['authorize']}"
+    #     reportmsg(url)
+    #
+    #     # Convert to SHA 256 for password and app key
+    #     pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
+    #     u_app_key = '{0}|{1}'.format(userid, api_secret)
+    #     app_key = hashlib.sha256(u_app_key.encode('utf-8')).hexdigest()
+    #     # prepare the data
+    #     values = {"source": "API", "apkversion": "1.0.0"}
+    #     values["uid"] = userid
+    #     values["pwd"] = pwd
+    #     values["factor2"] = twoFA
+    #     values["vc"] = vendor_code
+    #     values["appkey"] = app_key
+    #     values["imei"] = imei
+    #
+    #     payload = 'jData=' + json.dumps(values)
+    #     reportmsg("Req:" + payload)
+    #
+    #     res = requests.post(url, data=payload)
+    #     reportmsg("Reply:" + res.text)
+    #
+    #     resDict = json.loads(res.text)
+    #     if resDict['stat'] != 'Ok':
+    #         return None
+    #
+    #     self.__username = userid
+    #     self.__accountid = userid
+    #     self.__password = password
+    #     self.__susertoken = resDict['susertoken']
+    #     # reportmsg(self.__susertoken)
+    #
+    #     return resDict
 
     def set_session(self, userid, password, usertoken):
 
@@ -510,7 +617,7 @@ class NorenApi_Flattrade:
 
         return resDict
 
-    def place_order(self, act_id, buy_or_sell, product_type,
+    def place_order(self, buy_or_sell, product_type,
                     exchange, tradingsymbol, quantity, discloseqty,
                     price_type, price=0.0, trigger_price=None,
                     algo_id=None, naic_code=None,
@@ -523,7 +630,7 @@ class NorenApi_Flattrade:
         # prepare the data
         values = {'ordersource': 'API'}
         values["uid"] = self.__username
-        values["actid"] = act_id
+        values["actid"] = self.__accountid
         values["trantype"] = buy_or_sell
         values["prd"] = product_type
         values["exch"] = exchange
@@ -1063,3 +1170,71 @@ class NorenApi_Flattrade:
             return None
 
         return resDict
+
+if __name__ == "__main__":
+    cred = None
+    with open("cred.yml") as f:
+        creds = yaml.load(f, Loader=yaml.FullLoader)
+
+        if creds is None or "Flattrade" not in creds:
+            raise ValueError("No credentials found")
+
+        cred = creds["Flattrade"]
+
+    api = NorenApi_Flattrade(
+        host="https://piconnect.flattrade.in/PiConnectTP/",
+        websocket="wss://piconnect.flattrade.in/PiConnectWSTp/",
+    )
+
+    tokenFile = "flattradekey.txt"
+    if os.path.exists(tokenFile) and (
+        datetime.datetime.fromtimestamp(os.path.getmtime(tokenFile)).date()
+        == datetime.datetime.today().date()
+    ):
+        logger.info("Token has been created today already. Re-using it")
+        with open(tokenFile, "r") as f:
+            userToken = f.read()
+        logger.info(
+            f"userid {cred['user']} password ******** usertoken {userToken}"
+        )
+
+        loginStatus = api.set_session(
+            userid=cred["user"], password=cred["pwd"], usertoken=userToken
+        )
+    else:
+
+        logger.info("Logging in and persisting user token")
+        userToken = api.login(
+            userid=cred["user"],
+            password=cred["pwd"],
+            twoFA=pyotp.TOTP(cred["factor2"]).now(),
+            api_key=cred["apikey"],
+            api_secret=cred["apisecret"],
+        )
+
+        if userToken:
+            with open(tokenFile, "w") as f:
+                f.write(userToken)
+        else:
+            raise ValueError("Login failed")
+
+        loginStatus = api.set_session(
+            userid=cred["user"], password=cred["pwd"], usertoken=userToken
+        )
+
+
+        order1 = api.place_order(
+            buy_or_sell="S",
+            product_type="I",
+            exchange="NSE",
+            tradingsymbol="YESBANK-EQ",
+            quantity=1,
+            discloseqty=0,
+            price_type="MKT",
+            price=0.0,
+            trigger_price=None,
+            retention="DAY",
+            remarks="my_order_005",
+        )
+
+        print(order1)
