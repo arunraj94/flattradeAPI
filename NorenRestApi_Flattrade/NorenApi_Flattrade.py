@@ -101,6 +101,10 @@ class NorenApi_Flattrade:
             'span_calculator': '/SpanCalc',
             'option_greek': '/GetOptionGreek',
             'get_daily_price_series': '/EODChartData',
+            "session": f"https://authapi.flattrade.in/auth/session",
+            "ftauth": f"https://authapi.flattrade.in/ftauth",
+            "apitoken": f"https://authapi.flattrade.in/trade/apitoken"
+
         },
         'websocket_endpoint': 'wss://piconnect.flattrade.in/PiConnectWSTp/',
         # 'eoddata_endpoint' : 'http://eodhost/'
