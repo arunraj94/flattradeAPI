@@ -11,7 +11,6 @@ import urllib
 from time import sleep
 from datetime import datetime as dt
 from urllib.parse import urlparse, parse_qs
-import yaml, os, pyotp
 
 logger = logging.getLogger(__name__)
 
@@ -19,7 +18,7 @@ logger = logging.getLogger(__name__)
 class position:
     prd: str
     exch: str
-    instname:str
+    instname: str
     symname: str
     exd: int
     optt: str
@@ -73,11 +72,12 @@ def reportinfo(msg):
 
 class NorenApi_Flattrade:
     __service_config = {
-        'host': 'http://wsapihost/',
+        'host': 'https://piconnect.flattrade.in/PiConnectTP',
         'routes': {
             'authorize': '/QuickAuth',
             'logout': '/Logout',
             'forgot_password': '/ForgotPassword',
+            'change_password': '/Changepwd',
             'watchlist_names': '/MWList',
             'watchlist': '/MarketWatch',
             'watchlist_add': '/AddMultiScripsToMW',
@@ -98,12 +98,12 @@ class NorenApi_Flattrade:
             'positions': '/PositionBook',
             'scripinfo': '/GetSecurityInfo',
             'getquotes': '/GetQuotes',
-            "session": f"https://authapi.flattrade.in/auth/session",
-            "ftauth": f"https://authapi.flattrade.in/ftauth",
-            "apitoken": f"https://authapi.flattrade.in/trade/apitoken"
+            'span_calculator': '/SpanCalc',
+            'option_greek': '/GetOptionGreek',
+            'get_daily_price_series': '/EODChartData',
         },
-        'websocket_endpoint': 'wss://wsendpoint/',
-        'eoddata_endpoint': 'http://eodhost/'
+        'websocket_endpoint': 'wss://piconnect.flattrade.in/PiConnectWSTp/',
+        # 'eoddata_endpoint' : 'http://eodhost/'
     }
 
     def __init__(self, host, websocket):
@@ -156,7 +156,7 @@ class NorenApi_Flattrade:
         values["uid"] = self.__username
         values["actid"] = self.__username
         values["susertoken"] = self.__susertoken
-        values["source"] = 'DAPI'
+        values["source"] = 'API'
 
         payload = json.dumps(values)
 
@@ -341,44 +341,6 @@ class NorenApi_Flattrade:
         else:
             reporterror(response.text)
 
-    # def login(self, userid, password, twoFA, vendor_code, api_secret, imei):
-    #     config = NorenApi_Flattrade.__service_config
-    #
-    #     # prepare the uri
-    #     url = f"{config['host']}{config['routes']['authorize']}"
-    #     reportmsg(url)
-    #
-    #     # Convert to SHA 256 for password and app key
-    #     pwd = hashlib.sha256(password.encode('utf-8')).hexdigest()
-    #     u_app_key = '{0}|{1}'.format(userid, api_secret)
-    #     app_key = hashlib.sha256(u_app_key.encode('utf-8')).hexdigest()
-    #     # prepare the data
-    #     values = {"source": "API", "apkversion": "1.0.0"}
-    #     values["uid"] = userid
-    #     values["pwd"] = pwd
-    #     values["factor2"] = twoFA
-    #     values["vc"] = vendor_code
-    #     values["appkey"] = app_key
-    #     values["imei"] = imei
-    #
-    #     payload = 'jData=' + json.dumps(values)
-    #     reportmsg("Req:" + payload)
-    #
-    #     res = requests.post(url, data=payload)
-    #     reportmsg("Reply:" + res.text)
-    #
-    #     resDict = json.loads(res.text)
-    #     if resDict['stat'] != 'Ok':
-    #         return None
-    #
-    #     self.__username = userid
-    #     self.__accountid = userid
-    #     self.__password = password
-    #     self.__susertoken = resDict['susertoken']
-    #     # reportmsg(self.__susertoken)
-    #
-    #     return resDict
-
     def set_session(self, userid, password, usertoken):
 
         self.__username = userid
@@ -468,7 +430,7 @@ class NorenApi_Flattrade:
         values = {}
 
         if (feed_type == FeedType.TOUCHLINE):
-            values['t'] = 'ut'
+            values['t'] = 'u'
         elif (feed_type == FeedType.SNAPQUOTE):
             values['t'] = 'ud'
 
@@ -496,29 +458,6 @@ class NorenApi_Flattrade:
 
         # prepare the uri
         url = f"{config['host']}{config['routes']['watchlist_names']}"
-        reportmsg(url)
-        # prepare the data
-        values = {'ordersource': 'API'}
-        values["uid"] = self.__username
-
-        payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
-
-        reportmsg(payload)
-
-        res = requests.post(url, data=payload)
-        reportmsg(res.text)
-
-        resDict = json.loads(res.text)
-        if resDict['stat'] != 'Ok':
-            return None
-
-        return resDict
-
-    def get_clients(self):
-        config = NorenApi_Flattrade.__service_config
-
-        # prepare the uri
-        url = f"{config['host']}{config['routes']['getclients']}"
         reportmsg(url)
         # prepare the data
         values = {'ordersource': 'API'}
@@ -620,7 +559,6 @@ class NorenApi_Flattrade:
     def place_order(self, buy_or_sell, product_type,
                     exchange, tradingsymbol, quantity, discloseqty,
                     price_type, price=0.0, trigger_price=None,
-                    algo_id=None, naic_code=None,
                     retention='DAY', amo=None, remarks=None, bookloss_price=0.0, bookprofit_price=0.0, trail_price=0.0):
         config = NorenApi_Flattrade.__service_config
 
@@ -642,10 +580,9 @@ class NorenApi_Flattrade:
         values["trgprc"] = str(trigger_price)
         values["ret"] = retention
         values["remarks"] = remarks
+
         if amo is not None:
             values["amo"] = amo
-        values["algoid"] = algo_id
-        values["naicCode"] = naic_code
 
         # if cover order or high leverage order
         if product_type == 'H':
@@ -687,6 +624,7 @@ class NorenApi_Flattrade:
         # prepare the data
         values = {'ordersource': 'API'}
         values["uid"] = self.__username
+        values["actid"] = self.__accountid
         values["norenordno"] = str(orderno)
         values["exch"] = exchange
         values["tsym"] = urllib.parse.quote_plus(tradingsymbol)
@@ -791,7 +729,7 @@ class NorenApi_Flattrade:
         values["uid"] = self.__username
         values["actid"] = self.__accountid
         values["exch"] = exchange
-        values["tsym"] = tradingsymbol
+        values["tsym"] = urllib.parse.quote_plus(tradingsymbol)
         values["qty"] = str(quantity)
         values["prd"] = new_product_type
         values["prevprd"] = previous_product_type
@@ -874,6 +812,7 @@ class NorenApi_Flattrade:
         # prepare the data
         values = {'ordersource': 'API'}
         values["uid"] = self.__username
+        values["actid"] = self.__accountid
 
         payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
 
@@ -904,7 +843,7 @@ class NorenApi_Flattrade:
         values = {}
         values["uid"] = self.__username
         values["exch"] = exchange
-        values["stext"] = searchtext
+        values["stext"] = urllib.parse.quote_plus(searchtext)
 
         payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
 
@@ -930,7 +869,7 @@ class NorenApi_Flattrade:
         values = {}
         values["uid"] = self.__username
         values["exch"] = exchange
-        values["tsym"] = tradingsymbol
+        values["tsym"] = urllib.parse.quote_plus(tradingsymbol)
         values["strprc"] = str(strikeprice)
         values["cnt"] = str(count)
 
@@ -1047,7 +986,8 @@ class NorenApi_Flattrade:
         config = NorenApi_Flattrade.__service_config
 
         # prepare the uri
-        url = f"{config['eoddata_endpoint']}"
+        # url = f"{config['eoddata_endpoint']}"
+        url = f"{config['host']}{config['routes']['get_daily_price_series']}"
         reportmsg(url)
 
         # prepare the data
@@ -1065,8 +1005,8 @@ class NorenApi_Flattrade:
         values["from"] = str(startdate)
         values["to"] = str(enddate)
 
-        # payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
-        payload = json.dumps(values)
+        payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
+        # payload = json.dumps(values)
         reportmsg(payload)
 
         headers = {"Content-Type": "application/json; charset=utf-8"}
@@ -1130,10 +1070,10 @@ class NorenApi_Flattrade:
         if product_type != None:
             values["prd"] = product_type
 
-        if segment != None:
+        if product_type != None:
             values["seg"] = segment
 
-        if product_type != None:
+        if exchange != None:
             values["exch"] = exchange
 
         payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
@@ -1156,6 +1096,7 @@ class NorenApi_Flattrade:
 
         values = {}
         values["uid"] = self.__username
+        values["actid"] = self.__accountid
 
         payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
 
@@ -1171,70 +1112,49 @@ class NorenApi_Flattrade:
 
         return resDict
 
-if __name__ == "__main__":
-    cred = None
-    with open("cred.yml") as f:
-        creds = yaml.load(f, Loader=yaml.FullLoader)
+    def span_calculator(self, actid, positions: list):
+        config = NorenApi_Flattrade.__service_config
+        # prepare the uri
+        url = f"{config['host']}{config['routes']['span_calculator']}"
+        reportmsg(url)
 
-        if creds is None or "Flattrade" not in creds:
-            raise ValueError("No credentials found")
+        senddata = {}
+        senddata['actid'] = self.__accountid
+        senddata['pos'] = positions
+        payload = 'jData=' + json.dumps(senddata, default=lambda o: o.encode()) + f'&jKey={self.__susertoken}'
+        reportmsg(payload)
 
-        cred = creds["Flattrade"]
+        res = requests.post(url, data=payload)
+        reportmsg(res.text)
 
-    api = NorenApi_Flattrade(
-        host="https://piconnect.flattrade.in/PiConnectTP/",
-        websocket="wss://piconnect.flattrade.in/PiConnectWSTp/",
-    )
+        resDict = json.loads(res.text)
 
-    tokenFile = "flattradekey.txt"
-    if os.path.exists(tokenFile) and (
-        datetime.datetime.fromtimestamp(os.path.getmtime(tokenFile)).date()
-        == datetime.datetime.today().date()
-    ):
-        logger.info("Token has been created today already. Re-using it")
-        with open(tokenFile, "r") as f:
-            userToken = f.read()
-        logger.info(
-            f"userid {cred['user']} password ******** usertoken {userToken}"
-        )
+        return resDict
 
-        loginStatus = api.set_session(
-            userid=cred["user"], password=cred["pwd"], usertoken=userToken
-        )
-    else:
+    def option_greek(self, expiredate, StrikePrice, SpotPrice, InterestRate, Volatility, OptionType):
+        config = NorenApi_Flattrade.__service_config
 
-        logger.info("Logging in and persisting user token")
-        userToken = api.login(
-            userid=cred["user"],
-            password=cred["pwd"],
-            twoFA=pyotp.TOTP(cred["factor2"]).now(),
-            api_key=cred["apikey"],
-            api_secret=cred["apisecret"],
-        )
+        # prepare the uri
+        url = f"{config['host']}{config['routes']['option_greek']}"
+        reportmsg(url)
 
-        if userToken:
-            with open(tokenFile, "w") as f:
-                f.write(userToken)
-        else:
-            raise ValueError("Login failed")
+        # prepare the data
+        values = {"source": "API"}
+        values["actid"] = self.__accountid
+        values["exd"] = expiredate
+        values["strprc"] = StrikePrice
+        values["sptprc"] = SpotPrice
+        values["int_rate"] = InterestRate
+        values["volatility"] = Volatility
+        values["optt"] = OptionType
 
-        loginStatus = api.set_session(
-            userid=cred["user"], password=cred["pwd"], usertoken=userToken
-        )
+        payload = 'jData=' + json.dumps(values) + f'&jKey={self.__susertoken}'
 
+        reportmsg(payload)
 
-        order1 = api.place_order(
-            buy_or_sell="S",
-            product_type="I",
-            exchange="NSE",
-            tradingsymbol="YESBANK-EQ",
-            quantity=1,
-            discloseqty=0,
-            price_type="MKT",
-            price=0.0,
-            trigger_price=None,
-            retention="DAY",
-            remarks="my_order_005",
-        )
+        res = requests.post(url, data=payload)
+        reportmsg(res.text)
 
-        print(order1)
+        resDict = json.loads(res.text)
+
+        return resDict
