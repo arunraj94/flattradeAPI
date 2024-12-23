@@ -21,13 +21,11 @@ import aiohttp
 import pyotp
 import websockets
 import yaml
-from urllib.parse import urlparse, parse_qs
-from aiohttp.resolver import AsyncResolver
 import httpx
+from aiohttp.resolver import AsyncResolver
+from urllib.parse import urlparse, parse_qs
 
 logger = logging.getLogger(__name__)
-
-
 
 
 class position:
@@ -82,13 +80,14 @@ async def reportinfo(msg):
     logger.info(msg)
 
 
-class NorenApiAsync_Flattrade:
+class NorenRestApiAsync_Flattrade:
     __service_config = {
-        "host": "http://wsapihost/",
+        "host": 'https://piconnect.flattrade.in/PiConnectTP',
         "routes": {
             "authorize": "/QuickAuth",
             "logout": "/Logout",
             "forgot_password": "/ForgotPassword",
+            "change_password": "/Changepwd",
             "watchlist_names": "/MWList",
             "watchlist": "/MarketWatch",
             "watchlist_add": "/AddMultiScripsToMW",
@@ -116,7 +115,7 @@ class NorenApiAsync_Flattrade:
             "ftauth": f"https://authapi.flattrade.in/ftauth",
             "apitoken": f"https://authapi.flattrade.in/trade/apitoken"
         },
-        "websocket_endpoint": "wss://wsendpoint/",
+        "websocket_endpoint": 'wss://piconnect.flattrade.in/PiConnectWSTp/',
         #'eoddata_endpoint' : 'http://eodhost/'
     }
 
@@ -248,7 +247,7 @@ class NorenApiAsync_Flattrade:
             "uid": self.__username,
             "actid": self.__username,
             "susertoken": self.__susertoken,
-            "source": "DAPI",
+            "source": "API",
         }
 
         payload = json.dumps(values)
@@ -351,7 +350,7 @@ class NorenApiAsync_Flattrade:
         return token
 
     async def get_authcode(self, user, pwd, api_key, totp):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         headers = {
             "Accept": "application/json",
             "Accept-Language": "en-US,en;q=0.5",
@@ -416,7 +415,7 @@ class NorenApiAsync_Flattrade:
                 await reporterror(response.text)
 
     async def get_apitoken(self, api_key, code, api_secret):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         async with httpx.AsyncClient(http2=True) as client:
             response = await client.post(
                 config['routes']["apitoken"],
@@ -446,7 +445,7 @@ class NorenApiAsync_Flattrade:
         return True
 
     async def forgot_password(self, userid, pan, dob):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['host']}{config['routes']['forgot_password']}"
 
         values = {"source": "API", "uid": userid, "pan": pan, "dob": dob}
@@ -462,7 +461,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def logout(self):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['host']}{config['routes']['logout']}"
 
         values = {"ordersource": "API", "uid": self.__username}
@@ -505,7 +504,7 @@ class NorenApiAsync_Flattrade:
         values = {}
 
         if feed_type == FeedType.TOUCHLINE:
-            values["t"] = "ut"
+            values["t"] = "u"
         elif feed_type == FeedType.SNAPQUOTE:
             values["t"] = "ud"
 
@@ -524,7 +523,7 @@ class NorenApiAsync_Flattrade:
         await self.__ws_send(data)
 
     async def get_watch_list_names(self):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['host']}{config['routes']['watchlist_names']}"
 
         values = {"ordersource": "API", "uid": self.__username}
@@ -541,7 +540,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_watch_list(self, wlname):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['host']}{config['routes']['watchlist']}"
 
         values = {"ordersource": "API", "uid": self.__username, "wlname": wlname}
@@ -558,7 +557,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def add_watch_list_scrip(self, wlname, instrument):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['host']}{config['routes']['watchlist_add']}"
 
         values = {"ordersource": "API", "uid": self.__username, "wlname": wlname}
@@ -580,7 +579,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def delete_watch_list_scrip(self, wlname, instrument):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['host']}{config['routes']['watchlist_delete']}"
 
         values = {"ordersource": "API", "uid": self.__username, "wlname": wlname}
@@ -615,13 +614,11 @@ class NorenApiAsync_Flattrade:
         retention="DAY",
         amo=None,
         remarks=None,
-        algo_id=None,
-        naic_code=None,
         bookloss_price=0.0,
         bookprofit_price=0.0,
         trail_price=0.0,
     ):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['placeorder']}"
 
         values = {
@@ -639,8 +636,6 @@ class NorenApiAsync_Flattrade:
             "trgprc": str(trigger_price),
             "ret": retention,
             "remarks": remarks,
-            "algoid": algo_id,
-            "naicCode": naic_code,
         }
 
         if amo is not None:
@@ -678,7 +673,7 @@ class NorenApiAsync_Flattrade:
         bookprofit_price=0.0,
         trail_price=0.0,
     ):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['modifyorder']}"
 
         values = {
@@ -719,7 +714,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def cancel_order(self, orderno):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['cancelorder']}"
 
         values = {
@@ -740,7 +735,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def exit_order(self, orderno, product_type):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['exitorder']}"
 
         values = {
@@ -771,7 +766,7 @@ class NorenApiAsync_Flattrade:
         buy_or_sell,
         day_or_cf,
     ):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['product_conversion']}"
 
         values = {
@@ -799,7 +794,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def single_order_history(self, orderno):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['singleorderhistory']}"
 
         values = {"ordersource": "API", "uid": self.__username, "norenordno": orderno}
@@ -816,7 +811,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_order_book(self):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['orderbook']}"
 
         values = {"ordersource": "API", "uid": self.__username}
@@ -854,7 +849,7 @@ class NorenApiAsync_Flattrade:
         logger.debug("Cleanup completed")
 
     async def get_trade_book(self):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['tradebook']}"
 
         values = {
@@ -875,7 +870,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def searchscrip(self, exchange, searchtext):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['searchscrip']}"
 
         if searchtext is None:
@@ -900,7 +895,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_option_chain(self, exchange, tradingsymbol, strikeprice, count=2):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['optionchain']}"
 
         values = {
@@ -923,7 +918,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_security_info(self, exchange, token):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['scripinfo']}"
 
         values = {"uid": self.__username, "exch": exchange, "token": token}
@@ -940,7 +935,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_quotes(self, exchange, token):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['getquotes']}"
         await reportmsg(url)
 
@@ -960,7 +955,7 @@ class NorenApiAsync_Flattrade:
     async def get_time_price_series(
         self, exchange, token, starttime=None, endtime=None, interval=None
     ):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['TPSeries']}"
         await reportmsg(url)
 
@@ -993,7 +988,7 @@ class NorenApiAsync_Flattrade:
     async def get_daily_price_series(
         self, exchange, tradingsymbol, startdate=None, enddate=None
     ):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['get_daily_price_series']}"
         await reportmsg(url)
 
@@ -1029,7 +1024,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_holdings(self, product_type=None):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['holdings']}"
         await reportmsg(url)
 
@@ -1054,7 +1049,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_limits(self, product_type=None, segment=None, exchange=None):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['limits']}"
         await reportmsg(url)
 
@@ -1084,7 +1079,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def get_positions(self):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['positions']}"
         await reportmsg(url)
 
@@ -1104,7 +1099,7 @@ class NorenApiAsync_Flattrade:
         return resDict
 
     async def span_calculator(self, actid, positions: list):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['span_calculator']}"
         await reportmsg(url)
 
@@ -1126,7 +1121,7 @@ class NorenApiAsync_Flattrade:
     async def option_greek(
         self, expiredate, StrikePrice, SpotPrice, InterestRate, Volatility, OptionType
     ):
-        config = NorenApiAsync_Flattrade.__service_config
+        config = NorenRestApiAsync_Flattrade.__service_config
         url = f"{config['path']}{config['routes']['option_greek']}"
         await reportmsg(url)
 
@@ -1152,9 +1147,6 @@ class NorenApiAsync_Flattrade:
 
         return resDict
 
-    def encode_item(self, item):
-        encoded_item = hashlib.sha256(item.encode()).hexdigest()
-        return encoded_item
 
 if __name__ == "__main__":
     import sys
@@ -1171,7 +1163,7 @@ if __name__ == "__main__":
 
             cred = creds["Flattrade"]
 
-        api = NorenApiAsync_Flattrade(
+        api = NorenRestApiAsync_Flattrade(
             host="https://piconnect.flattrade.in/PiConnectTP/",
             websocket="wss://piconnect.flattrade.in/PiConnectWSTp/",
         )
@@ -1215,30 +1207,30 @@ if __name__ == "__main__":
 
 
         order1 = await api.place_order(
-            buy_or_sell="S",
-            product_type="I",
+            buy_or_sell="B",
+            product_type="C",
             exchange="NSE",
             tradingsymbol="YESBANK-EQ",
             quantity=1,
             discloseqty=0,
-            price_type="MKT",
-            price=0.0,
+            price_type="LMT",
+            price=20,
             trigger_price=None,
             retention="DAY",
-            remarks="my_order_005",
+            remarks="my_order_001",
         )
 
         print(order1)
 
-        # order2 = await api.modify_order(
-        #     orderno=order1["norenordno"],
-        #     exchange="NSE",
-        #     tradingsymbol="YESBANK-EQ",
-        #     newquantity=1,
-        #     newprice_type="LMT",
-        #     newprice=18,
-        # )
+        order2 = await api.modify_order(
+            orderno=order1["norenordno"],
+            exchange="NSE",
+            tradingsymbol="YESBANK-EQ",
+            newquantity=1,
+            newprice_type="LMT",
+            newprice=18,
+        )
 
-        # print(order2)
+        print(order2)
 
     asyncio.run(main())
